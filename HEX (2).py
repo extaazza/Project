@@ -99,33 +99,27 @@ class HexUI:
 
 class HexGame:
     HEX_DIRS = [(1,0),(0,1),(-1,0),(0,-1),(1,-1),(-1,1)]
-
     def __init__(self, root, size=11, bot_difficulty="easy", main_menu_callback=None):
         self.root = root
         self.size = size
         self.bot_difficulty = self._normalize_diff(bot_difficulty)
         self.main_menu_callback = main_menu_callback
-
         self.window_width = 1920
         self.window_height = 1150
         self.canvas = HexUI.create_board_canvas(root, size)
         self.canvas.config(width=self.window_width, height=self.window_height)
         self.canvas.pack()
-
         self.board = [[0 for _ in range(size)] for _ in range(size)]
         self.current_player = 1
         self.bot_player = 2
-
         self.hex_size = 35
         self.adjust_hex_size()
         self.game_over = False
-
         self.control_frame = HexUI.create_control_panel(root)
         self.control_frame.pack(fill=tk.X, padx=10, pady=3)
         self.status_label = HexUI.create_status_label(self.control_frame)
         self.status_label.config(text=f"Ход игрока: Черные | Доска: {self.size}x{self.size} | Бот: {self._diff_ru(self.bot_difficulty)}")
         self.status_label.pack(side=tk.LEFT, padx=10)
-
         HexUI.create_button(self.control_frame, text="Правила игры", command=self.show_rules,
                             font=HexUI.FONTS['button_small']).pack(side=tk.LEFT, padx=10)
         HexUI.create_button(self.control_frame, text="Перезапуск", command=self.restart_game,
@@ -134,10 +128,8 @@ class HexGame:
                             font=HexUI.FONTS['button_small'], bg=HexUI.COLORS['accent']).pack(side=tk.RIGHT, padx=10)
         HexUI.create_button(self.control_frame, text="В меню", command=self.back_to_menu,
                             font=HexUI.FONTS['button_small']).pack(side=tk.RIGHT, padx=10)
-
         self.draw_board()
         self.canvas.bind("<Button-1>", self.click_event)
-
         self.last_human_move = None
         self.bot_turn_index = 0
         self.search_deadline = None
@@ -212,7 +204,6 @@ class HexGame:
         n = self.size
         visited = [[False]*n for _ in range(n)]
         q = deque()
-
         if player == 1:
             for r in range(n):
                 if self.board[r][0] == 1:
@@ -270,7 +261,6 @@ class HexGame:
         print(f"Ход: ({row}, {col}) игроком {self.current_player} {'(человек)' if human else '(бот)'}")
         self.board[row][col] = self.current_player
         self.place_piece(row, col)
-
         # Проверяем победу текущего игрока
         if self.check_win(self.current_player):
             self.game_over = True
@@ -278,7 +268,6 @@ class HexGame:
             self.status_label.config(text=f"Победа: {who} (соединена цепочка)!")
             self.root.after(100, lambda: tk.messagebox.showinfo("Игра окончена", f"Победа: {who}!\nСоединена цепочка."))
             return
-
         # Проверяем на ничью: доска заполнена, и никто не победил
         if self.board_full():
             black_wins = self.check_win(1)
@@ -288,10 +277,8 @@ class HexGame:
                 self.status_label.config(text="Ничья: поле заполнено без победной цепочки!")
                 self.root.after(100, lambda: tk.messagebox.showinfo("Игра окончена", "Ничья: поле заполнено, но ни один игрок не создал цепочку!"))
                 return
-
         if human:
             self.last_human_move = (row, col)
-
         self.current_player = 3 - self.current_player
         self.status_label.config(text=f"Ход игрока: {'Черные' if self.current_player==1 else 'Белые'} | Доска: {self.size}x{self.size} | Бот: {self._diff_ru(self.bot_difficulty)}")
 
@@ -301,21 +288,18 @@ class HexGame:
             return
         self.bot_turn_index += 1
         print(f"Ход бота (сложность: {self.bot_difficulty})")
-
         # Проверяем немедленный выигрыш
         mv = self.find_winning_move(self.bot_player)
         if mv:
             print(f"Бот: найден выигрышный ход {mv}")
             self.make_move(mv[0], mv[1], human=False)
             return
-
         # Проверяем, не надо ли блокировать игрока
         block = self.find_winning_move(3 - self.bot_player)
         if block:
             print(f"Бот: блокировка хода игрока {block}")
             self.make_move(block[0], block[1], human=False)
             return
-
         move = None
         if self.bot_difficulty == 'easy':
             ms = self.legal_moves()
@@ -346,46 +330,29 @@ class HexGame:
             ms = self.candidate_moves()
             if not ms:
                 ms = self.legal_moves()
-
             free_cells = len(self.legal_moves())
-
-            # Базовые настройки
-            if self.size <= 11:
-                depth_cap = 4
-                budget = 2.0
-            elif self.size <= 13:
-                depth_cap = 3
-                budget = 1.5
-            else:
-                depth_cap = 2
-                budget = 1.0
-
-            # Динамическая глубина в эндшпиле
-            if free_cells <= 20:
+            depth_cap = 6 if self.size <= 11 else 5
+            budget = 5.0  # до 5 секунд на ход
+            if free_cells <= 25:
                 depth_cap += 2
-                budget += 1.0
-            elif free_cells <= 35:
+                budget += 3.0
+            elif free_cells <= 40:
                 depth_cap += 1
-                budget += 0.5
-
+                budget += 2.0
             print(f"Бот (hard): свободных клеток = {free_cells}, глубина = {depth_cap}, время = {budget:.1f}с")
-
             self.search_deadline = time.time() + budget
             move = self.id_search(ms, depth_cap)
             print(f"Бот: ход после ID-поиска {move}")
-
             if move is None:
                 move = self.greedy_tradeoff_move()
                 print(f"Бот: жадный ход (tradeoff) {move}")
             if move is None:
                 move = self.greedy_reduce_own_distance()
                 print(f"Бот: жадный ход (reduce distance) {move}")
-
         if move is None:
             ms = self.legal_moves()
             move = random.choice(ms) if ms else None
             print(f"Бот: случайный ход {move}")
-
         if move is None:
             print("Бот: нет доступных ходов")
             self.current_player = 1
@@ -393,7 +360,6 @@ class HexGame:
                 text=f"Ход игрока: Черные | Доска: {self.size}x{self.size} | Бот: {self._diff_ru(self.bot_difficulty)}"
             )
             return
-
         r, c = move
         self.make_move(r, c, human=False)
 
@@ -409,7 +375,6 @@ class HexGame:
             mid = (self.size // 2, self.size // 2)
             return [mid] if self.board[mid[0]][mid[1]] == 0 else self.legal_moves()
         seen = set()
-        # берём только соседние клетки
         for r, c in occ:
             for dr, dc in HexGame.HEX_DIRS:
                 nr, nc = r + dr, c + dc
@@ -438,7 +403,6 @@ class HexGame:
                 return 1
             else:
                 return INF
-
         if player == 1:
             for r in range(n):
                 c = 0
@@ -482,46 +446,80 @@ class HexGame:
         return INF
 
     def static_eval(self):
+        """Улучшенная оценка позиции: приоритет - соединение своих сторон и блокировка соперника."""
+        INF = 10 ** 9
         my = self.connection_distance(self.bot_player)
         op = self.connection_distance(3 - self.bot_player)
-        if my >= 10 ** 9:
-            my = 10 ** 6
-        if op >= 10 ** 9:
-            op = 10 ** 6
+        if my >= INF: my = INF
+        if op >= INF: op = INF
+        score = (op - my) * 500.0
 
-        # Разница путей (основной фактор)
-        score = (op - my) * 100.0
+        # Бонус за количество "связанных" фишек (улучшает построение цепочки)
+        def connectivity(player):
+            total = 0
+            for r in range(self.size):
+                for c in range(self.size):
+                    if self.board[r][c] == player:
+                        for nr, nc in self.get_neighbors(r, c):
+                            if self.board[nr][nc] == player:
+                                total += 1
+            return total
 
-        # Бонус за контроль центра
-        cr = (self.size - 1) / 2
-        cc = (self.size - 1) / 2
-        for r in range(self.size):
-            for c in range(self.size):
-                if self.board[r][c] == self.bot_player:
-                    score += 2.0 / (1 + abs(r - cr) + abs(c - cc))
+        score += connectivity(self.bot_player) * 10.0
+        score -= connectivity(3 - self.bot_player) * 8.0
 
         return score
 
     def greedy_reduce_own_distance(self):
-        best, bm = -float('inf'), None
+        """Выбираем ход, который максимально уменьшает расстояние бота (дельта),
+        с небольшой подстраховкой — если ход ещё и ухудшает путь оппонента, это бонус."""
+        best_score = -float('inf')
+        best_move = None
+        orig_my = self.connection_distance(self.bot_player)
+        orig_op = self.connection_distance(3 - self.bot_player)
+
         for r, c in self.legal_moves():
+            # пробуем ход
             self.board[r][c] = self.bot_player
-            val = -self.connection_distance(self.bot_player)
+            new_my = self.connection_distance(self.bot_player)
+            new_op = self.connection_distance(3 - self.bot_player)
             self.board[r][c] = 0
-            if val > best:
-                best, bm = val, (r, c)
-        return bm
+
+            # дельты: положительная дельта — улучшение (уменьшение расстояния)
+            my_delta = (orig_my - new_my)
+            op_delta = (new_op - orig_op)  # положительное — делает оппоненту хуже
+
+            # комбинируем: основной вес — my_delta, бонус — ухудшение оппонента
+            score = my_delta * 1.0 + op_delta * 0.5
+
+            if score > best_score:
+                best_score = score
+                best_move = (r, c)
+
+        return best_move
 
     def greedy_tradeoff_move(self):
-        best, bm = -float('inf'), None
+        """Жадная эвристика: максимально ухудшить оппонента и/или улучшить себя — смотрим послеходовые дельты."""
+        best = -float('inf')
+        bm = None
+        orig_my = self.connection_distance(self.bot_player)
+        orig_op = self.connection_distance(3 - self.bot_player)
+
         for r, c in self.legal_moves():
             self.board[r][c] = self.bot_player
-            my_dist = self.connection_distance(self.bot_player)
-            opp_dist = self.connection_distance(3 - self.bot_player)
+            my_new = self.connection_distance(self.bot_player)
+            op_new = self.connection_distance(3 - self.bot_player)
             self.board[r][c] = 0
-            score = opp_dist * 1.5 - my_dist
+
+            my_delta = (orig_my - my_new)  # >0 — мы сократили свой путь
+            op_delta = (op_new - orig_op)  # >0 — ухудшили оппонента
+
+            # Формула: сильнее ценим ухудшение оппонента, но и своё улучшение важно
+            score = (op_delta * 1.5) + (my_delta * 1.0)
+
             if score > best:
-                best, bm = score, (r, c)
+                best = score
+                bm = (r, c)
         return bm
 
     def find_winning_move(self, player):
@@ -534,51 +532,51 @@ class HexGame:
         return None
 
     def id_search(self, moves, depth_cap):
+        """Итеративный поиск с увеличенной глубиной и кэшем позиций."""
+        self.ttable = {}  # кэш позиций: hash -> (depth, score)
         best_move = None
-        best_score = -float('inf')
-
         ordered = self.move_order(moves, self.bot_player)
+
         for depth in range(1, depth_cap + 1):
-            if self.search_deadline and time.time() > self.search_deadline:
-                break
             alpha, beta = -float('inf'), float('inf')
-            local_best_move = best_move
-            local_best_score = best_score
+            local_best = None
+            local_score = -float('inf')
 
             for r, c in ordered:
                 if self.search_deadline and time.time() > self.search_deadline:
                     break
                 self.board[r][c] = self.bot_player
-                if self.check_win(self.bot_player):
-                    self.board[r][c] = 0
-                    return (r, c)
                 score = -self.negamax(depth - 1, 3 - self.bot_player, -beta, -alpha)
                 self.board[r][c] = 0
 
-                if score > local_best_score:
-                    local_best_score = score
-                    local_best_move = (r, c)
+                if score > local_score:
+                    local_score = score
+                    local_best = (r, c)
                 if score > alpha:
                     alpha = score
 
-            if local_best_move is not None:
-                best_move, best_score = local_best_move, local_best_score
-
-            if best_move and best_move in ordered:
-                ordered.remove(best_move)
-                ordered.insert(0, best_move)
+            if local_best:
+                best_move = local_best
+                # переносим лучший ход наверх для move ordering
+                if best_move in ordered:
+                    ordered.remove(best_move)
+                    ordered.insert(0, best_move)
 
         return best_move
 
     def negamax(self, depth, player, alpha, beta):
+        """Negamax с альфа-бета отсечением и кэшем."""
         if self.search_deadline and time.time() > self.search_deadline:
             return self.static_eval()
-
         if self.check_win(3 - player):
             return -1_000_000 + (5 - depth)
-
         if depth == 0 or self.board_full():
             return self.static_eval()
+
+        # Хэш позиции
+        state_key = tuple(tuple(row) for row in self.board)
+        if state_key in self.ttable and self.ttable[state_key][0] >= depth:
+            return self.ttable[state_key][1]
 
         moves = self.candidate_moves()
         if not moves:
@@ -587,8 +585,6 @@ class HexGame:
 
         best = -float('inf')
         for r, c in moves:
-            if self.search_deadline and time.time() > self.search_deadline:
-                break
             self.board[r][c] = player
             val = -self.negamax(depth - 1, 3 - player, -beta, -alpha)
             self.board[r][c] = 0
@@ -598,24 +594,38 @@ class HexGame:
                 alpha = best
             if alpha >= beta:
                 break
+
+        self.ttable[state_key] = (depth, best)
         return best
 
     def move_order(self, moves, player):
-        def center_bias(r, c):
-            cr = (self.size - 1) / 2
-            cc = (self.size - 1) / 2
-            return - (abs(r - cr) + abs(c - cc))
-
+        """Улучшенный порядок ходов: приоритет тем, что уменьшают дистанцию себе и увеличивают её сопернику."""
         scored = []
+        my_before = self.connection_distance(player)
+        op_before = self.connection_distance(3 - player)
+
         for r, c in moves:
             self.board[r][c] = player
-            myp = self.connection_distance(player)
-            opp = self.connection_distance(3 - player)
+            my_after = self.connection_distance(player)
+            op_after = self.connection_distance(3 - player)
             self.board[r][c] = 0
-            score = (opp - myp) * 100.0 + center_bias(r, c)
-            if self.last_human_move and abs(self.last_human_move[0]-r) <=1 and abs(self.last_human_move[1]-c) <=1:
-                score += 10.0
+
+            my_delta = (my_before - my_after)
+            op_delta = (op_after - op_before)
+
+            # Весим оппонента сильнее — нужно мешать
+            score = my_delta * 200 + op_delta * 300
+
+            # Бонус за центральные ходы
+            cr, cc = (self.size - 1) / 2, (self.size - 1) / 2
+            score -= (abs(r - cr) + abs(c - cc)) * 2
+
+            # Бонус за ходы рядом с последним игрока (чтобы блокировать цепочку)
+            if self.last_human_move and abs(self.last_human_move[0] - r) <= 1 and abs(self.last_human_move[1] - c) <= 1:
+                score += 100
+
             scored.append((score, (r, c)))
+
         scored.sort(reverse=True)
         return [m for _, m in scored]
 
@@ -626,13 +636,10 @@ class MainMenu:
         self.root.attributes('-fullscreen', True)
         self.root.resizable(False, False)
         self.root.configure(bg=HexUI.COLORS['background'])
-
         self.menu_frame = HexUI.create_menu_frame(root)
         self.menu_frame.pack(fill=tk.BOTH, expand=True)
-
         self.title_label = HexUI.create_title_label(self.menu_frame, "Гекс")
         self.title_label.pack(pady=50)
-
         HexUI.create_button(self.menu_frame, text="Начать игру",
                             command=self.select_board_size, font=HexUI.FONTS['button_large'], width=20).pack(pady=20)
         HexUI.create_button(self.menu_frame, text="Правила игры",
